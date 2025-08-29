@@ -1,0 +1,10 @@
+streamlit
+requests
+gTTS
+pillow
+openai
+pandas
+numpy
+sqlite3
+json
+typing
