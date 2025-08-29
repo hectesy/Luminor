@@ -3,6 +3,4 @@ streamlit
 openai
 pandas
 numpy
-sqlite3
-json
-typing
+
