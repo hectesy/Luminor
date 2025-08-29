@@ -1,7 +1,5 @@
-streamlit
-requests
-gTTS
 pillow
+streamlit
 openai
 pandas
 numpy
