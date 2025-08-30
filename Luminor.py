@@ -49,16 +49,6 @@ def intro_screen():
         unsafe_allow_html=True
     )
 
-    # Play audio using st.audio
-    try:
-        audio_file = open("./assets/whispers_september_52sec.mp3", "rb")
-        audio_bytes = audio_file.read()
-        st.audio(audio_bytes, format="audio/mp3", start_time=0)
-    except FileNotFoundError:
-        st.error("Audio file not found. Please ensure 'assets/whispers_september_52sec.mp3' exists in your project directory.")
-    except Exception as e:
-        st.error(f"Failed to play audio: {str(e)}")
-
     # Typing effect: Searching logos...
     placeholder = st.empty()
     message = "🔍 Searching logos..."
@@ -1341,4 +1331,5 @@ def main():
                         st.error("Username already exists")
 
 if __name__ == "__main__":
+
     main()
