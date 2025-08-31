@@ -42,27 +42,41 @@ def intro_screen():
         }
         </style>
         <div class="centered">
-            <div class="title">✨ Luminor ✨</div>
+            <div class="title">âœ¨ Luminor âœ¨</div>
             <div class="subtitle">AI Brand Intelligence</div>
         </div>
         """,
         unsafe_allow_html=True
     )
-
     # Typing effect: Searching logos...
     placeholder = st.empty()
-    message = "🔍 Searching logos..."
+    message = "ðŸ” Searching logos..."
     for i in range(len(message) + 1):
         placeholder.markdown(f"<p style='text-align:center;'>{message[:i]}</p>", unsafe_allow_html=True)
         time.sleep(0.05)
 
     time.sleep(0.8)
-    st.success("✅ Ready to analyze your logo!")
+    st.success("âœ… Ready to analyze your logo!")
 
     # Start button with single-click handling
-    if st.button("🚀 Start Now", key="start_now"):
+    if st.button("ðŸš€ Start Now", key="start_now"):
         st.session_state["show_intro"] = False
+        st.write("Button clicked, transitioning to main app...")
         st.rerun()
+
+def main_app():
+    st.title("Luminor â€“ Brand Recognition AI")
+    st.write("Upload a logo to begin analysis...")
+
+# --- Routing ---
+if "show_intro" not in st.session_state:
+    st.session_state["show_intro"] = True
+
+if st.session_state["show_intro"]:
+    intro_screen()
+else:
+    main_app()
+
 # --- CONFIGURATION ---
 # Use environment variable for OpenAI API key
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "your-openai-api-key-here")  # Replace with actual key or use env variable
@@ -1319,4 +1333,5 @@ def main():
 if __name__ == "__main__":
 
     main()
+
 
