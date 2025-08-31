@@ -42,30 +42,42 @@ def intro_screen():
         }
         </style>
         <div class="centered">
-            <div class="title">âœ¨ Luminor âœ¨</div>
+            <div class="title">✨ Luminor ✨</div>
             <div class="subtitle">AI Brand Intelligence</div>
         </div>
         """,
         unsafe_allow_html=True
     )
+
+    # Play audio only if file exists
+    audio_path = "./assets/whispers_september_52sec.mp3"
+    if os.path.exists(audio_path):
+        try:
+            with open(audio_path, "rb") as audio_file:
+                audio_bytes = audio_file.read()
+                st.audio(audio_bytes, format="audio/mp3", start_time=0)
+        except Exception as e:
+            st.warning(f"Could not play audio: {str(e)}")
+    # Removed the error message - app works fine without audio
+
     # Typing effect: Searching logos...
     placeholder = st.empty()
-    message = "ðŸ” Searching logos..."
+    message = "🔍 Searching logos..."
     for i in range(len(message) + 1):
         placeholder.markdown(f"<p style='text-align:center;'>{message[:i]}</p>", unsafe_allow_html=True)
         time.sleep(0.05)
 
     time.sleep(0.8)
-    st.success("âœ… Ready to analyze your logo!")
+    st.success("✅ Ready to analyze your logo!")
 
     # Start button with single-click handling
-    if st.button("ðŸš€ Start Now", key="start_now"):
+    if st.button("🚀 Start Now", key="start_now"):
         st.session_state["show_intro"] = False
         st.write("Button clicked, transitioning to main app...")
         st.rerun()
 
 def main_app():
-    st.title("Luminor â€“ Brand Recognition AI")
+    st.title("Luminor – Brand Recognition AI")
     st.write("Upload a logo to begin analysis...")
 
 # --- Routing ---
@@ -1333,5 +1345,6 @@ def main():
 if __name__ == "__main__":
 
     main()
+
 
 
