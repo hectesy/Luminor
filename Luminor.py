@@ -49,6 +49,31 @@ def intro_screen():
         unsafe_allow_html=True
     )
 
+    # Audio handling with better error management
+    audio_paths = [
+        "./assets/whispers_september_52sec.mp3",
+        "assets/whispers_september_52sec.mp3",
+        "whispers_september_52sec.mp3"
+    ]
+    
+    audio_played = False
+    for audio_path in audio_paths:
+        try:
+            with open(audio_path, "rb") as audio_file:
+                audio_bytes = audio_file.read()
+                st.audio(audio_bytes, format="audio/mp3", start_time=0)
+                audio_played = True
+                break
+        except FileNotFoundError:
+            continue
+        except Exception as e:
+            st.warning(f"Audio issue: {str(e)}")
+            break
+    
+    if not audio_played:
+        # Optional: Add a placeholder or skip audio silently
+        st.info("🔇 Audio intro unavailable - proceeding with visual experience")
+
     # Typing effect: Searching logos...
     placeholder = st.empty()
     message = "🔍 Searching logos..."
@@ -62,21 +87,7 @@ def intro_screen():
     # Start button with single-click handling
     if st.button("🚀 Start Now", key="start_now"):
         st.session_state["show_intro"] = False
-        st.write("Button clicked, transitioning to main app...")
         st.rerun()
-
-def main_app():
-    st.title("Luminor – Brand Recognition AI")
-    st.write("Upload a logo to begin analysis...")
-
-# --- Routing ---
-if "show_intro" not in st.session_state:
-    st.session_state["show_intro"] = True
-
-if st.session_state["show_intro"]:
-    intro_screen()
-else:
-    main_app()
 # --- CONFIGURATION ---
 # Use environment variable for OpenAI API key
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "your-openai-api-key-here")  # Replace with actual key or use env variable
@@ -1333,3 +1344,4 @@ def main():
 if __name__ == "__main__":
 
     main()
+
