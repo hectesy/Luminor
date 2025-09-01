@@ -48,18 +48,6 @@ def intro_screen():
         """,
         unsafe_allow_html=True
     )
-
-    # Play audio only if file exists
-    audio_path = "./assets/whispers_september_52sec.mp3"
-    if os.path.exists(audio_path):
-        try:
-            with open(audio_path, "rb") as audio_file:
-                audio_bytes = audio_file.read()
-                st.audio(audio_bytes, format="audio/mp3", start_time=0)
-        except Exception as e:
-            st.warning(f"Could not play audio: {str(e)}")
-    # Removed the error message - app works fine without audio
-
     # Typing effect: Searching logos...
     placeholder = st.empty()
     message = "🔍 Searching logos..."
@@ -88,7 +76,6 @@ if st.session_state["show_intro"]:
     intro_screen()
 else:
     main_app()
-
 # --- CONFIGURATION ---
 # Use environment variable for OpenAI API key
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "your-openai-api-key-here")  # Replace with actual key or use env variable
@@ -1343,8 +1330,4 @@ def main():
                         st.error("Username already exists")
 
 if __name__ == "__main__":
-
     main()
-
-
-
