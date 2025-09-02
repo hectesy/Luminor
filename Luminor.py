@@ -12,6 +12,7 @@ import sqlite3
 import os
 from typing import Optional, Dict, List, Any
 import openai
+
 # --- CONFIGURATION ---
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY")
 st.set_page_config(
@@ -246,25 +247,32 @@ def save_scan_history(username: str, brand_data: Dict, scan_type: str = 'manual'
     except sqlite3.Error:
         pass
 
-def load_user_history(username: str, limit: int = 50) -> List[Dict]:
+def load_user_history(username: str, limit: Optional[int] = 50) -> List[Dict]:
     try:
         conn = sqlite3.connect('luminor_users.db')
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT brand_data, scan_type, confidence, scanned_at FROM user_history WHERE username = ? ORDER BY scanned_at DESC LIMIT ?",
-            (username, limit)
-        )
+        sql = "SELECT brand_data, scan_type, confidence, scanned_at FROM user_history WHERE username = ? ORDER BY scanned_at DESC"
+        params = (username,)
+        if limit is not None:
+            sql += " LIMIT ?"
+            params = params + (limit,)
+        cursor.execute(sql, params)
         results = cursor.fetchall()
         conn.close()
         history = []
         for row in results:
-            brand_data = json.loads(row[0])
-            brand_data['scan_metadata'] = {
-                'scan_type': row[1],
-                'confidence': row[2],
-                'scanned_at': row[3]
-            }
-            history.append(brand_data)
+            try:
+                brand_data = json.loads(row[0])
+                if not isinstance(brand_data, dict) or 'id' not in brand_data:
+                    continue
+                brand_data['scan_metadata'] = {
+                    'scan_type': row[1],
+                    'confidence': row[2],
+                    'scanned_at': row[3]
+                }
+                history.append(brand_data)
+            except json.JSONDecodeError:
+                continue
         return history
     except sqlite3.Error:
         return []
@@ -310,12 +318,11 @@ def analyze_image_with_openai(image_data: Image.Image, api_key: str) -> Optional
                                 "headquarters": "location or null",
                                 "market_cap": "market cap or null",
                                 "competitors": ["list of potential competitors"],
-                                "offers": ["current offers or null"],
-                                "stores": ["nearby stores or null"],
+                                "stores": [{"name": "store name", "distance": "distance in km", "rating": float}],
                                 "similar_logos": ["brands with similar logos"],
                                 "keywords": ["relevant keywords for the brand or logo"]
                             }
-                            For known brands, provide precise details. For unknown brands, infer details from logo style, colors, and context. Estimate sentiment_score (0-10) based on logo aesthetics: modern, clean=8-10; cluttered, dated=3-6; generic=0-3. Estimate sustainability_score (0-10) based on colors (e.g., green=7-9) and inferred industry (e.g., eco-friendly=high). Include at least 3 competitors and 5 keywords for unknown brands."""
+                            For known brands, provide precise details. For unknown brands, infer details from logo style, colors, and context. Estimate sentiment_score (0-10) based on logo aesthetics: modern, clean=8-10; cluttered, dated=3-6; generic=0-3. Estimate sustainability_score (0-10) based on colors (e.g., green=7-9) and inferred industry (e.g., eco-friendly=high). Include at least 3 competitors and 5 keywords for unknown brands. For stores, return a list of dictionaries with name, distance, and rating."""
                         },
                         {
                             "type": "image_url",
@@ -334,11 +341,38 @@ def analyze_image_with_openai(image_data: Image.Image, api_key: str) -> Optional
         elif content.startswith('```'):
             content = content.replace('```', '').strip()
         
-        result = json.loads(content)
-        result['confidence'] = float(result.get('confidence', 0))
-        result['sentiment_score'] = float(result.get('sentiment_score', 0))
-        result['sustainability_score'] = float(result.get('sustainability_score', 0))
-        return result
+        try:
+            result = json.loads(content)
+            # Validate required fields
+            required_fields = ['brand_detected', 'brand_name', 'confidence']
+            for field in required_fields:
+                if field not in result:
+                    st.error(f"Invalid OpenAI response: missing '{field}' field")
+                    return None
+            # Normalize stores to ensure list of dictionaries
+            if 'stores' in result and result['stores']:
+                normalized_stores = []
+                for store in result['stores']:
+                    if isinstance(store, dict) and 'name' in store:
+                        normalized_stores.append({
+                            'name': store.get('name', 'Unknown Store'),
+                            'distance': store.get('distance', 'N/A'),
+                            'rating': float(store.get('rating', 0.0))
+                        })
+                    elif isinstance(store, str):
+                        normalized_stores.append({
+                            'name': store,
+                            'distance': 'N/A',
+                            'rating': 0.0
+                        })
+                result['stores'] = normalized_stores
+            result['confidence'] = float(result.get('confidence', 0))
+            result['sentiment_score'] = float(result.get('sentiment_score', 0))
+            result['sustainability_score'] = float(result.get('sustainability_score', 0))
+            return result
+        except json.JSONDecodeError:
+            st.error("Invalid JSON response from OpenAI")
+            return None
     except Exception as e:
         st.error(f"AI Analysis Error: {str(e)}")
         return None
@@ -437,15 +471,6 @@ def apply_theme(theme: Dict[str, str]) -> None:
         .metric-card:hover {{
             transform: scale(1.05);
         }}
-        .offer-badge {{
-            background: linear-gradient(45deg, {theme['success']}, {theme['primary']});
-            color: white;
-            padding: 0.5rem 1rem;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            margin: 0.3rem;
-            display: inline-block;
-        }}
         .high-score {{ color: {theme['success']}; font-weight: 600; }}
         .low-score {{ color: {theme['warning']}; font-weight: 600; }}
         .confidence-bar {{
@@ -471,8 +496,9 @@ BRAND_DATABASE = {
         'sustainability_score': 7.8, 'sentiment_score': 8.2, 'authenticity_tips': 'Check swoosh alignment, quality stitching, official tags.',
         'description': 'Global leader in athletic footwear and apparel.', 'founded': '1964', 'headquarters': 'Beaverton, OR, USA',
         'market_cap': '$196.5B', 'stock_symbol': 'NKE', 'competitors': ['Adidas', 'Puma', 'Under Armour'],
-        'website': 'https://www.nike.com', 'offers': [{'title': '20% Off Running Shoes', 'code': 'RUN20', 'expires': '2024-12-31'}],
-        'stores': [{'name': 'Nike Store VI', 'distance': '2.1 km', 'rating': 4.7}], 'similar_logos': ['Puma', 'Adidas'],
+        'website': 'https://www.nike.com',
+        'stores': [{'name': 'Nike Store VI', 'distance': '2.1 km', 'rating': 4.7}],
+        'similar_logos': ['Puma', 'Adidas'],
         'brand_colors': ['#000000', '#FFFFFF'], 'keywords': ['swoosh', 'athletic', 'sports']
     },
     'apple': {
@@ -480,14 +506,15 @@ BRAND_DATABASE = {
         'sustainability_score': 8.9, 'sentiment_score': 8.7, 'authenticity_tips': 'Verify serial numbers on Apple website.',
         'description': 'Multinational technology company.', 'founded': '1976', 'headquarters': 'Cupertino, CA, USA',
         'market_cap': '$2.8T', 'stock_symbol': 'AAPL', 'competitors': ['Samsung', 'Google', 'Microsoft'],
-        'website': 'https://www.apple.com', 'offers': [{'title': 'Education Discount 10%', 'code': 'EDU10', 'expires': '2024-12-31'}],
-        'stores': [{'name': 'Apple Store Ikeja', 'distance': '3.8 km', 'rating': 4.8}], 'similar_logos': ['Samsung', 'LG'],
+        'website': 'https://www.apple.com',
+        'stores': [{'name': 'Apple Store Ikeja', 'distance': '3.8 km', 'rating': 4.8}],
+        'similar_logos': ['Samsung', 'LG'],
         'brand_colors': ['#007AFF', '#000000', '#FFFFFF'], 'keywords': ['iphone', 'mac', 'ipad']
     },
     'unknown': {
         'id': 'unknown', 'name': 'Unknown Brand', 'industry': 'Unknown', 'logo': '❓', 'slogan': 'N/A',
         'sustainability_score': 0, 'sentiment_score': 0, 'authenticity_tips': 'Research thoroughly before purchase.',
-        'description': 'Brand not recognized in our database.', 'competitors': [], 'offers': [], 'stores': [], 'similar_logos': [],
+        'description': 'Brand not recognized in our database.', 'competitors': [], 'stores': [], 'similar_logos': [],
         'keywords': []
     }
 }
@@ -504,6 +531,21 @@ def find_brand_by_name(name: str) -> Dict:
                 if keyword in name_lower:
                     return brand
     return BRAND_DATABASE['unknown']
+
+def clean_invalid_favorites(username: str) -> None:
+    try:
+        conn = sqlite3.connect('luminor_users.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT brand_id FROM user_favorites WHERE username = ?", (username,))
+        favorite_ids = [row[0] for row in cursor.fetchall()]
+        history = load_user_history(username, limit=None)
+        for brand_id in favorite_ids:
+            if brand_id not in BRAND_DATABASE and not any(b['id'] == brand_id for b in history):
+                cursor.execute("DELETE FROM user_favorites WHERE username = ? AND brand_id = ?", (username, brand_id))
+        conn.commit()
+        conn.close()
+    except sqlite3.Error as e:
+        st.error(f"Error cleaning favorites: {str(e)}")
 
 def add_to_favorites(username: str, brand_id: str) -> bool:
     try:
@@ -577,7 +619,6 @@ def intro_screen():
     time.sleep(0.8)
     st.success("✅ Ready to analyze your logo!")
     if st.button("🚀 Start Now", key="start_now"):
-        print(f"Intro button clicked at {time.strftime('%H:%M:%S')}")  # Debug
         st.session_state.show_intro = False
         st.rerun()
 
@@ -616,7 +657,7 @@ def render_brand_card(brand: Dict, username: Optional[str] = None) -> None:
         with col1:
             is_fav = is_favorite(username, brand['id'])
             button_label = "❤️ Remove from Favorites" if is_fav else "🤍 Add to Favorites"
-            if st.button(button_label, key=f"fav_{brand['id']}_{time.time()}"):
+            if st.button(button_label, key=f"fav_{brand['id']}"):
                 if is_fav:
                     if remove_from_favorites(username, brand['id']):
                         st.success("Removed from favorites!")
@@ -655,7 +696,7 @@ def render_brand_card(brand: Dict, username: Optional[str] = None) -> None:
             </div>
             """, unsafe_allow_html=True)
     
-    tab1, tab2, tab3, tab4 = st.tabs(["ℹ️ Info", "🔍 Authenticity", "🎁 Offers", "🏪 Stores"])
+    tab1, tab2, tab3 = st.tabs(["ℹ️ Info", "🔍 Authenticity", "🏪 Stores"])
     with tab1:
         st.write(f"**Description:** {brand['description']}")
         if 'founded' in brand and brand['founded']:
@@ -678,21 +719,15 @@ def render_brand_card(brand: Dict, username: Optional[str] = None) -> None:
         if 'similar_logos' in brand and brand['similar_logos']:
             st.warning(f"⚠️ **Be careful of similar logos from:** {', '.join(brand['similar_logos'])}")
     with tab3:
-        if 'offers' in brand and brand['offers']:
-            st.write("**Current offers and promotions:**")
-            for offer in brand['offers']:
-                st.markdown(f"""
-                <div class="offer-badge">
-                    {offer['title']} - Code: {offer['code']} (Expires: {offer['expires']})
-                </div>
-                """, unsafe_allow_html=True)
-        else:
-            st.info("No current offers available.")
-    with tab4:
         if 'stores' in brand and brand['stores']:
             st.write("**Nearby stores:**")
             for store in brand['stores']:
-                st.write(f"📍 **{store['name']}** - {store['distance']} away ⭐ {store['rating']}")
+                if isinstance(store, dict):
+                    st.write(f"📍 **{store.get('name', 'Unknown Store')}** - {store.get('distance', 'N/A')} away ⭐ {store.get('rating', 0.0)}")
+                elif isinstance(store, str):
+                    st.write(f"📍 **{store}** - Distance: N/A ⭐ Rating: N/A")
+                else:
+                    st.warning("Invalid store format detected.")
         else:
             st.info("No nearby stores found.")
 
@@ -906,7 +941,6 @@ def main():
                                         'stock_symbol': result.get('stock_symbol', None),
                                         'competitors': result.get('competitors', []),
                                         'website': result.get('website', None),
-                                        'offers': result.get('offers', []),
                                         'stores': result.get('stores', []),
                                         'similar_logos': result.get('similar_logos', []),
                                         'brand_colors': result.get('colors', []),
@@ -932,6 +966,7 @@ def main():
     
     elif page == "⭐ Favorites":
         st.markdown('<div class="main-header"><h1>⭐ Your Favorites</h1><p>Brands you love</p></div>', unsafe_allow_html=True)
+        clean_invalid_favorites(st.session_state.username)
         favorites = get_user_favorites(st.session_state.username)
         if favorites:
             for brand_id in favorites:
@@ -939,8 +974,8 @@ def main():
                 if brand:
                     render_brand_card(brand, st.session_state.username)
                 else:
-                    temp_brand = load_user_history(st.session_state.username)
-                    temp_brand = next((b for b in temp_brand if b['id'] == brand_id), None)
+                    history = load_user_history(st.session_state.username, limit=None)
+                    temp_brand = next((b for b in history if b['id'] == brand_id), None)
                     if temp_brand:
                         render_brand_card(temp_brand, st.session_state.username)
                     else:
@@ -1023,6 +1058,5 @@ def main():
                 except sqlite3.Error:
                     st.error("❌ Failed to clear favorites")
 
-# --- RUN APPLICATION ---
 if __name__ == "__main__":
     main()
